@@ -104,7 +104,7 @@ segMap = detect_sources(oriImg, threshold, npixels=100) #generate a segmentation
  
 galMask = np.zeros_like(segMap) 
 
-zp = np.round(oriImg.shape[0]/2) #denerian operation, works for image with galaxy in the center 
+zp = np.round(oriImg.shape[0]/2) #Only works for image with galaxy in the center 
 
 galMask[segMap == segMap[zp, zp]] = 1 #selects the central segmentation to remove from initial segmentation map
   
