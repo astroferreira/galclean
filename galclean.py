@@ -3,49 +3,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib as mpl
 import sys
-import colormaps as cmaps
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy.ma as ma
-from astropy.visualization import SqrtStretch
-from astropy.visualization.mpl_normalize import ImageNormalize
 import matplotlib.pylab as plt
 from astropy.convolution import Gaussian2DKernel
 from photutils import detect_sources
 from photutils import detect_threshold
-import matplotlib.ticker as ticker
 from astropy.stats import biweight_midvariance, mad_std
 from astropy.stats import sigma_clipped_stats
 from astropy.convolution import Gaussian2DKernel
 from photutils.detection import detect_sources
 from scipy.ndimage import binary_dilation
 
-
-
-def printImage(img, ax=False, colorbar=True, vmin=0, vmax=100):
-    if(not ax):
-        f, ax = plt.subplots(1,1, figsize=(5, 5))
-        im = ax.imshow(img, vmin=np.percentile(img,vmin), vmax=np.percentile(img,vmax), interpolation='nearest', cmap=cmaps.viridis)
-    else:
-        ax.set_xticks([])
-        ax.set_yticks([])
-        im = ax.imshow(img,  vmin=np.percentile(img,vmin), vmax=np.percentile(img,vmax), interpolation='nearest', cmap=cmaps.viridis)
-
-    if(colorbar):
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="5%", pad=0.01)
-        plt.colorbar(im, cax=cax,  format=ticker.FuncFormatter(fmt))
-    return im
-
-def fmt(x, pos):
-    a, b = '{:.1e}'.format(x).split('e')
-    b = int(b)
-    return r'${} \times 10^{{{}}}$'.format(a, b)
-
-
-font = {'family' : 'serif',
-        'weight' : 'normal',
-        'size'   : 17,
-        }
 
 
 def measureBackground(data, iterations, mask):
@@ -82,18 +50,12 @@ def generateCircularMask(d):
     return mask
 
 
-
-outputImg = True
-
-if len(sys.argv) < 2:
+if len(sys.argv) < 1:
   print '\n\n'
-  print sys.argv[0] , 'galaxyFilePath outputImg?\n'
+  print sys.argv[0] , 'galaxyFilePath\n'
   exit()
 else:
   galaxyFilePath = sys.argv[1]
-  if(sys.argv[2]):
-    outputImg    = sys.argv[2].astype(bool)
-
 
 
 oriImg = pf.getdata(galaxyFilePath) #loads fits file data
@@ -130,29 +92,4 @@ segImg = np.zeros_like(oriImg) + median #add background median to segmented regi
 
 segImg[segMap == 0] = oriImg[segMap == 0] #transfer non-segmented regions to output image
 
-
-#Generates output
-if(outputImg):
-  f, axes = plt.subplots(1, 4, figsize=(15, 4))
-
-  ax = axes.flat
-
-
-  printImage(oriImg, ax[0], vmin=0.5, vmax=99.5, colorbar=False)
-  printImage(segMap-finalMask*2, ax[1], colorbar=False)
-  printImage(segImg, ax[2], vmin=0.5, vmax=99.5, colorbar=False)
-  printImage((oriImg-segImg), ax[3], vmin=0.5, vmax=99.5, colorbar=False)
-
-
-  axes[0].set_ylabel(r'$\rm '+galaxyFilePath+'$', fontdict=font)
-  axes[0].set_title(r'$\rm Original $', fontdict=font)
-  axes[1].set_title(r'$\rm Segmentation \ Map $', fontdict=font)
-  axes[2].set_title(r'$\rm After \ Mask $', fontdict=font)
-  axes[3].set_title(r'$\rm Original \ - \ Masked $', fontdict=font)
-  plt.tight_layout()
-  plt.savefig(galaxyFilePath + '.png', dpi=50)
-  plt.close()
-
 pf.writeto(galaxyFilePath.split('.fits')[0] + '_seg.fits', segImg, clobber=1)
-
-
