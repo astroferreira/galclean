@@ -13,7 +13,7 @@ python galclean.py <file_path_to_fits> [--siglevel SIGLEVEL] [--min_size MIN_SIZ
 
 ## output
 
-1. Segmented input in a fits file: <path>_fits.png
+1. Segmented input in a fits file: <path>_seg.png
 2. PNG for inspection with the original and segmented images with a residual plot
 
 ## Reference
