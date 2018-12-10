@@ -2,7 +2,7 @@
 
 '''
 
-    GalClean
+    GalClean (https://github.com/astroferreira/galclean)
 
     This simple tool was developed to remove bright sources
     other than the central galaxy in EFIGI [1] stamps. It uses
@@ -12,17 +12,17 @@
     for an example). The first version of galclean was used in
     10.1093/mnras/stx2266 [2].
 
-    The default values are the ones that were used in the paper, I
-    refactored it so it would be possible to tweak it for your personal
-    goal with different data.
+    usage: python galclean.py <file_path_to_fits> [--siglevel SIGLEVEL] [--min_size MIN_SIZE]
 
-    usage: galclean.py <fits_path> [std above skybg] [min size in % for extraction]
-
-        std above skybg: float with the STD above the sky background in
-            which to use in the detection step
+        siglevel : float
+            float with the number of std deviations 
+            above the sky background in which to use in the detection step.
         
-        min size in % for extractions: minimum size in % of the original img
-            for the extracted sources. Images are upscaled before extraction.
+        min_size: float
+            minimum size in fraction of the original img size to detect
+            external sources. If min_size = 0.01, this means 1% of 
+            the image size. For a image of NxN size this would mean 
+            (N*0.01)^2 pixels of the upscaled image.
 
     output:
         segmented fits: <original_name>_seg.fits
@@ -31,11 +31,12 @@
     Author: Leonardo de Albernaz Ferreira leonardo.ferreira@nottingham.ac.uk (https://github.com/astroferreira)
     References:
         [1] https://www.astromatic.net/projects/efigi
-        [2] https://ui.adsabs.harvard.edu/#abs/arXiv:1707.02863
+        [2] http://adsabs.harvard.edu/abs/2018MNRAS.473.2701D
 
 '''
 import sys
 import argparse
+import warnings
 
 import numpy as np
 import numpy.ma as ma
@@ -47,7 +48,7 @@ import matplotlib.pylab as plt
 from astropy.io import fits
 from astropy.convolution import Gaussian2DKernel
 from astropy.stats import biweight_midvariance, mad_std, sigma_clipped_stats
-
+from astropy.utils.exceptions import AstropyDeprecationWarning
 from photutils import detect_sources, detect_threshold
 
 from scipy.ndimage import binary_dilation, zoom
@@ -62,6 +63,24 @@ def measure_background(data, iterations, mask):
         Photutils for Background estimation, here I use 
         dilation on sources masks and feed the new mask
         to the next iteration.
+
+        Parameters
+        ----------
+        data : array_like
+            2D array of the image.
+        iterations : int
+            Number of iteractions until returning the 
+            measurement of the sky background. This is 
+            a recursive function. When ``iterations`` = 0 
+            it will return the mean, median, and std.
+        mask :  array_like
+            2D segmentation array of the sources found
+            in previous interaction.
+        Returns
+        -------
+        (mean, median, std) : tuple of floats
+            The mean, median and standard deviation of
+            the sky background measured in ``data``.
     '''
 
     if(mask.sum() > 0):
@@ -75,17 +94,28 @@ def measure_background(data, iterations, mask):
         threshold = median + (std * 2)
         segm_img = detect_sources(data, threshold, npixels=5)
  
-        circ_mask = generate_circular_mask(5)
+        circ_mask = generate_circular_kernel(5)
         next_mask = binary_dilation(segm_img, circ_mask)
         return measure_background(data, iterations-1, next_mask)
 
 
-def generate_circular_mask(d):
+def generate_circular_kernel(d):
     '''
         Generates a circular kernel to be used with
         dilation transforms used in GalClean. This
         is done with an 2D matrix of 1s, flipping to
         0 when x^2 + y^2 > r^2.
+
+        Parameters
+        ----------
+        d : int
+            The diameter of the kernel. This should be an odd
+            number, but the function handles 
+
+        Returns
+        -------
+        circular_kernel : 2D numpy.array bool
+            A 2D boolean array with circular shape.
     '''
     
     d = int(d)
@@ -108,7 +138,7 @@ def generate_circular_mask(d):
     return mask
 
 
-def segmentation_map(data, threshold, min_size=0.05):
+def segmentation_map(data, threshold, min_size=0.01):
     '''
         Generates the segmentation map used to segment
         the galaxy image. This function handles the 
@@ -122,18 +152,37 @@ def segmentation_map(data, threshold, min_size=0.05):
         galclean to extract the outskirts of sources that
         are bellow the sky background threshold (which is
         generally the case with most sources).
+
+        Parameters
+        ----------
+        data :  array_like
+            The 2D array of the image.
+        threshold : float
+            Threshold above the sky background in which to
+            use as the detection level in detect_sources.
+        min_size : float
+            Minimum fraction size as a fraction of the image size 
+            to convert to number of pixels in which is used
+            to detect sources. If the source is below
+            this size it will not be detected. 
+        Returns
+        -------
+        seg_map : array_like
+            2D segmentation map of the external sources
+            excluding the galaxy in the centre. 
     '''
 
     zp = int(np.round(data.shape[0]/2))
 
-    seg_map = detect_sources(data, threshold, npixels=int(data.shape[0]*min_size)).data
+    npixels = int((data.shape[0]*min_size)**2)
+    seg_map = detect_sources(data, threshold, npixels=npixels).data
 
     gal_mask = np.zeros_like(seg_map)
     
     gal_mask[np.where(seg_map == seg_map[zp, zp])] = 1
 
-    # binary dilation with gal_mask, to make it galmask bigger
-    gal_mask = binary_dilation(gal_mask, generate_circular_mask(zp/10))
+    # binary dilation with gal_mask, to make galmask bigger
+    gal_mask = binary_dilation(gal_mask, generate_circular_kernel(zp/10))
 
     seg_map[seg_map == seg_map[zp, zp]] = 0
     seg_map[seg_map > 0] = 1
@@ -144,23 +193,35 @@ def segmentation_map(data, threshold, min_size=0.05):
 
     # binary dilation for sources segmentation map,
     #  zp/20 ~ 2.5% of the image galaxy size
-    seg_map = binary_dilation(seg_map, generate_circular_mask(zp/20))
+    seg_map = binary_dilation(seg_map, generate_circular_kernel(zp/20))
     
     return seg_map
 
-def rescale(img, scale_factor):
+def rescale(data, scale_factor):
     '''
         This is simply a wrapper to the zoom
         function of scipy in order to avoid
         oversampling. 
+
+        Parameters
+        ----------
+        data : array_like
+            2D array of the image
+        scale_factor : float
+            Scale factor to apply in the zoom.
+        Returns
+        -------
+        rescaled_data : array_like
+            scaled version of ``data`` in which its
+            size was changed by ``scale_factor``. 
     '''
 
-    if(img.shape[0]*scale_factor > 2000):
-        scale_factor = 2000/img.shape[0]
+    if(data.shape[0]*scale_factor > 2000):
+        scale_factor = 2000/data.shape[0]
 
-    return zoom(img, scale_factor, prefilter=True)
+    return zoom(data, scale_factor, prefilter=True)
 
-def galclean(ori_img, std_level, min_size=0.05, show=False):
+def galclean(ori_img, std_level=3, min_size=0.01, show=False):
     '''
         Galclean measures the sky background, upscales
         the galaxy image, find the segmentation map of 
@@ -178,6 +239,27 @@ def galclean(ori_img, std_level, min_size=0.05, show=False):
         apply the segmentation map to the upscaled image,
         replaces external sources with the sky background
         median and then downscale it to the original scale.
+
+        Parameters
+        ----------
+        ori_img : array_like
+            2D array of the image
+        std_level : float
+            Number of standard deviations above the sky median
+            used to define the threshold for detection.
+        min_size : float
+            Minimum fraction size as a fraction of the image size 
+            to convert to number of pixels in which is used
+            to detect sources. If the source is below
+            this size it will not be detected. 
+        show: bool
+            Used as an option to show or not the inspection
+            PNG after segmentation.
+        Returns
+        -------
+        segmented_img : array_like
+            2D array of the image after segmentation.
+
     '''
     
     mean, median, std = measure_background(ori_img, 2, np.zeros_like(ori_img))
@@ -186,7 +268,7 @@ def galclean(ori_img, std_level, min_size=0.05, show=False):
     #upscale the image. It is easier to segment larger sources.
     scaled_img = rescale(ori_img, 4)
 
-    seg_map = segmentation_map(scaled_img, threshold, min_size=0.05)
+    seg_map = segmentation_map(scaled_img, threshold, min_size=min_size)
 
     #apply segmentation map to the image. Replace segmented regions
     #with sky median
@@ -202,18 +284,37 @@ def galclean(ori_img, std_level, min_size=0.05, show=False):
 
     return segmented_img
 
-def galshow(img, ax=None, vmax=99.5, vmin=None):
+def galshow(data, ax=None, vmax=99.5, vmin=None):
     '''
         Wrapper to the imshow function of matplotlib
         pyplot. This is just to apply the look and feel
         I generally use with galaxy images representations.
+
+        Parameters
+        ----------
+        data : array_like
+            2D array of the image
+        ax : Axis
+            Axis in which to plot the image. If ``None``, it
+            creates a new Axis.
+        vmax: float
+            Top fraction in which to use clip the image when plotting
+            it. It is used in numpy.percentile.
+        vmin: flot
+            Bottom fraction in which to clip the image when plotting
+            it. It is used in numpy.percentile.
+        Returns
+        -------
+        ax : AxisImage
+            The Axis provided as argument after plot or the one
+            created for it.
     '''
 
     if(vmax is not None):
-        vmax = np.percentile(img, vmax)
+        vmax = np.percentile(data, vmax)
         
     if(vmin is not None):
-        vmin = np.percentile(img, vmin)
+        vmin = np.percentile(data, vmin)
 
     if(ax is None):
         f, ax = plt.subplots(1, 1)
@@ -221,13 +322,24 @@ def galshow(img, ax=None, vmax=99.5, vmin=None):
     ax.set_xticks([])
     ax.set_yticks([])
 
-    return ax.imshow(img, vmax=vmax, vmin=vmin, cmap='gist_gray_r',
+    return ax.imshow(data, vmax=vmax, vmin=vmin, cmap='gist_gray_r',
                      origin='lower')
 
 def plot_result(ori_img, segmented_img, save=False):
     '''
         Plot the original image, segmented and
         the residual.
+
+        Parameters
+        ----------
+        ori_img : array_like
+            2D array for the original image (before)
+            segmentation.
+        segmented_img : array_like
+            2D array for the segmented image.
+        save : bool
+            Option used to determine to save the
+            ouput image or not.
 
     '''
     fig, axs = plt.subplots(1, 3, figsize=(10, 4))
@@ -262,10 +374,10 @@ def __handle_input(args):
     parser.add_argument('--min_size', 
                         help='Minimum size of the sources to be \
                               extracted in fraction of the \
-                              image total size (e.g. 0.05 for 5 \
-                              per cent of the image size). Default: 0.05',
+                              image total size (e.g. 0.01 for 1 \
+                              per cent of the image size). Default: 0.01',
                         type=float,
-                        default=0.05)
+                        default=0.01)
 
     args = parser.parse_args()
 
