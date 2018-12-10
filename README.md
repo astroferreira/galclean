@@ -1,4 +1,4 @@
-#GalClean
+# GalClean
 
 Simple tool to remove bright sources (excluding the galaxy itself) from a fits image using Astropy PhotUtils.
 
@@ -21,5 +21,5 @@ This tool was created to remove external bright sources from EFIGI's stamps to a
 after applying artificial redshift to them with FERENGI. Published in [1]. The first version [2] was
 very different from the present one, as it was totally refactored, updated and debuged.  
 
-[1] [de Albernaz Ferreira & Ferrari, 2018](http://adsabs.harvard.edu/abs/2018MNRAS.473.2701D)
+[1] [de Albernaz Ferreira & Ferrari, 2018](http://adsabs.harvard.edu/abs/2018MNRAS.473.2701D) \
 [2] [First Version](https://github.com/astroferreira/galclean/blob/44ecb2cf4902133c27c4d357b9f72f951b4d5d04/galclean.py)
