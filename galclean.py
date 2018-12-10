@@ -221,7 +221,7 @@ def rescale(data, scale_factor):
 
     return zoom(data, scale_factor, prefilter=True)
 
-def galclean(ori_img, std_level=3, min_size=0.01, show=False):
+def galclean(ori_img, std_level=4, min_size=0.01, show=False):
     '''
         Galclean measures the sky background, upscales
         the galaxy image, find the segmentation map of 
@@ -368,7 +368,7 @@ def __handle_input(args):
                         )
     parser.add_argument('--siglevel', 
                         help='STD above skybackground level \
-                              to detect sources. Default: 3', 
+                              to detect sources. Default: 4', 
                         type=float,
                         default=3)
     parser.add_argument('--min_size', 
