@@ -227,7 +227,7 @@ def rescale(data, scale_factor):
     return zoom(data, scale_factor, prefilter=True)
 
 
-def galclean(ori_img, std_level=4, min_size=0.01, show=False):
+def galclean(ori_img, std_level=4, min_size=0.01, show=False, save=True):
     '''
         Galclean measures the sky background, upscales
         the galaxy image, find the segmentation map of
@@ -283,10 +283,8 @@ def galclean(ori_img, std_level=4, min_size=0.01, show=False):
     downscale_factor = ori_img.shape[0]/segmented_img.shape[0]
     segmented_img = rescale(segmented_img, downscale_factor)
 
-    if(show):
-        plot_result(ori_img, segmentation_map, save=True)
-        plt.show()
-
+    plot_result(ori_img, segmented_img, seg_map, show=show, save=save)
+    
     return segmented_img
 
 
@@ -332,7 +330,7 @@ def galshow(data, ax=None, vmax=99.5, vmin=None):
                      origin='lower')
 
 
-def plot_result(ori_img, segmented_img, save=False):
+def plot_result(ori_img, segmented_img, seg_map, show=False, save=False):
     '''
         Plot the original image, segmented and
         the residual.
@@ -349,22 +347,31 @@ def plot_result(ori_img, segmented_img, save=False):
             ouput image or not.
 
     '''
-    fig, axs = plt.subplots(1, 3, figsize=(10, 4))
-
     residual = ori_img-segmented_img
+    
+    if(show):
+        fig, axs = plt.subplots(1, 3, figsize=(10, 4))
 
-    axs[0].set_title('Original Image')
-    galshow(ori_img, axs[0])
+        axs[0].set_title('Original Image')
+        galshow(ori_img, axs[0])
 
-    axs[1].set_title('Segmented Image')
-    galshow(segmented_img, axs[1])
+        axs[1].set_title('Segmented Image')
+        galshow(segmented_img, axs[1])
 
-    axs[2].set_title('Original - Segmented')
-    galshow(residual, axs[2])
+        axs[2].set_title('Original - Segmented')
+        galshow(seg_map, axs[2])
 
-    plt.subplots_adjust(hspace=0, wspace=0)
+        plt.subplots_adjust(hspace=0, wspace=0)
+        plt.show()
+
+        if(save):
+            fig.savefig('segmentation.png')
+            print('Output Inspection PNG {}'.format('segmentation.png'))
+            
     if(save):
-        fig.savefig('segmentation.png')
+        np.save('segmentation_map', seg_map)
+        print('Output Segmap Mask {}'.format('segmentation_map.npy'))
+        
 
 
 def __handle_input(args):
@@ -385,6 +392,9 @@ def __handle_input(args):
                               per cent of the image size). Default: 0.01',
                         type=float,
                         default=0.01)
+    
+    parser.add_argument('--show', nargs='?', default=False, const=True)
+    parser.add_argument('--save', nargs='?', default=False, const=True)
 
     args = parser.parse_args()
 
@@ -401,7 +411,8 @@ if __name__ == '__main__':
         ori_img = fits.getdata(args.file_path)
 
         clean_image = galclean(ori_img, args.siglevel,
-                               args.min_size)
+                               args.min_size, show=args.show,
+                               save=args.save)
 
         output_path = '{}_seg.fits'. \
                       format(args.file_path.split('.fits')[0])
@@ -409,7 +420,6 @@ if __name__ == '__main__':
         fits.writeto(output_path, clean_image, overwrite=True)
         print('Run complete.')
         print('Output fits {}'.format(output_path))
-        print('Output Inspection PNG {}'.format('segmentation.png'))
     except FileNotFoundError:
         print('Fits not found with path {}.\
                Please try again with a different path'.format(args.file_path))
