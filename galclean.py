@@ -188,8 +188,11 @@ def segmentation_map(data, threshold, min_size=0.01):
     # binary dilation with gal_mask, to make galmask bigger
     gal_mask = binary_dilation(gal_mask, generate_circular_kernel(zp/10))
 
+    background_pixels = data[seg_map == 0]
+
     seg_map[seg_map == seg_map[zp, zp]] = 0
     seg_map[seg_map > 0] = 1
+
     seg_map = seg_map - gal_mask
 
     seg_map[seg_map < 0] = 0
@@ -199,7 +202,7 @@ def segmentation_map(data, threshold, min_size=0.01):
     #  zp/20 ~ 2.5% of the image galaxy size
     seg_map = binary_dilation(seg_map, generate_circular_kernel(zp/20))
 
-    return seg_map
+    return seg_map, background_pixels
 
 
 def rescale(data, scale_factor):
@@ -273,12 +276,16 @@ def galclean(ori_img, std_level=4, min_size=0.01, show=False, save=True):
     # upscale the image. It is easier to segment larger sources.
     scaled_img = rescale(ori_img, 4)
 
-    seg_map = segmentation_map(scaled_img, threshold, min_size=min_size)
+    seg_map, background_pixels = segmentation_map(scaled_img, threshold, min_size=min_size)
 
     # apply segmentation map to the image. Replace segmented regions
     # with sky median
-    segmented_img = np.zeros_like(scaled_img) + median
+    segmented_img = np.zeros_like(scaled_img)
     segmented_img[seg_map == 0] = scaled_img[seg_map == 0]
+    
+    n_pix_to_replace = segmented_img[seg_map == 1].shape[0]
+    segmented_img[seg_map == 1] = np.random.choice(background_pixels,
+                                                   n_pix_to_replace)
 
     downscale_factor = ori_img.shape[0]/segmented_img.shape[0]
     segmented_img = rescale(segmented_img, downscale_factor)
