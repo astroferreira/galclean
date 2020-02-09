@@ -50,6 +50,8 @@ from scipy.ndimage import gaussian_filter
 
 from scipy.ndimage import binary_dilation, zoom
 
+CONST_CLEAN = 0
+SAMPLING_CLEAN = 1
 
 def measure_background(data, iterations, mask):
     '''
@@ -131,7 +133,7 @@ def generate_circular_kernel(d):
     return mask
 
 
-def segmentation_map(data, threshold, min_size=0.01, smap=None):
+def segmentation_map(data, threshold, min_size=0.01, provided_map=None):
     '''
         Generates the segmentation map used to segment
         the galaxy image. This function handles the
@@ -168,10 +170,10 @@ def segmentation_map(data, threshold, min_size=0.01, smap=None):
 
     npixels = int((data.shape[0]*min_size)**2)
 
-    if smap is None:
+    if provided_map is None:
         seg_map = detect_sources(data, threshold, npixels=npixels).data
     else:
-        seg_map = smap
+        seg_map = provided_map
 
     gal_mask = np.zeros_like(seg_map)
 
@@ -209,7 +211,7 @@ def segmentation_map(data, threshold, min_size=0.01, smap=None):
     return seg_map, background_pixels, seg_cent
 
 
-def rescale(data, scale_factor):
+def rescale(data, scale_factor, base_band=0):
     '''
         This is simply a wrapper to the zoom
         function of scipy in order to avoid
@@ -227,13 +229,18 @@ def rescale(data, scale_factor):
             size was changed by ``scale_factor``.
     '''
 
-    if(data.shape[0]*scale_factor > 2000):
+    if(data.shape[1]*scale_factor > 2000):
         scale_factor = 2000/data.shape[0]
+
+    multiband = len(data.shape) > 2
+
+    if(multiband): 
+        scale_factor = [1, scale_factor, scale_factor]
 
     return zoom(data, scale_factor, prefilter=True)
 
 
-def galclean(ori_img, other_img, std_level=4, min_size=0.01, show=False, save=True, smap=None):
+def galclean(ori_img, base_band=0, other_img=None, std_level=4, min_size=0.01, show=False, save=True, seg_map=None):
     '''
         Galclean measures the sky background, upscales
         the galaxy image, find the segmentation map of
@@ -269,53 +276,58 @@ def galclean(ori_img, other_img, std_level=4, min_size=0.01, show=False, save=Tr
         segmented_img : array_like
             2D array of the image after segmentation.
     '''
-    mean, median, std = measure_background(ori_img, 2, np.zeros_like(ori_img))
+
+    multiband = len(ori_img.shape) == 3
+
+    if(multiband):
+        base_image = ori_img[base_band]
+    else:
+        data = np.expand_dims(ori_img, axis=0)
+        base_image = data[0]
+
+    original_shape = base_image.shape[0]
+
+    mean, median, std = measure_background(base_image, 2, np.zeros_like(base_image))
     threshold = median + (std_level*std)
 
-    # upscale the image. It is easier to segment larger sources.
-    scaled_img = rescale(ori_img, 4)
-    scaled_img2 = rescale(other_img, 4)
-    scaled_smap = None
+    # if segmentation map is provided skip upscaling
+    segmap_provided = seg_map is not None
 
-    # don't upscale if providing own segmap
-    if not (smap is None):
-        scaled_img = ori_img
-        scaled_img2 = other_img
-        scaled_smap = smap
+    if(not segmap_provided):
+        base_image = rescale(base_image, 4)
+        data = rescale(ori_img, 4)
 
-    seg_map, background_pixels, seg_cent = segmentation_map(scaled_img, threshold, min_size=min_size, smap=scaled_smap)
-    background_pixels2 = scaled_img2[seg_map == 0]
+    seg_map, background_pixels, seg_cent = segmentation_map(base_image, threshold, min_size=min_size, provided_map=seg_map)
 
-    # apply segmentation map to the image. Replace segmented regions
-    # with sky median
-    segmented_img = np.zeros_like(scaled_img)
-    segmented_img[seg_map == 0] = scaled_img[seg_map == 0]
+    print(data.shape)
+    segmented_img = np.zeros_like(data)
+    bands = segmented_img.shape[0]
+    for band in range(bands):
+        print(segmented_img.shape)
+        segmented_img[band][seg_map == 0] = data[band][seg_map == 0]
+        segmented_img[band] = replace_sources(segmented_img[band], seg_map, median, background_pixels, mode=CONST_CLEAN)
 
-    segmented_img2 = np.zeros_like(scaled_img2)
-    segmented_img2[seg_map == 0] = scaled_img2[seg_map == 0]
+    if(not segmap_provided):
+        downscale_factor = original_shape / base_image.shape[0]
+        segmented_img = rescale(segmented_img,  downscale_factor)
+        seg_cent = rescale(seg_cent, downscale_factor)
 
-    n_pix_to_replace = segmented_img[seg_map == 1].shape[0]
-    segmented_img[seg_map == 1] = np.random.choice(background_pixels,
-                                                   n_pix_to_replace)
 
-    n_pix_to_replace2 = segmented_img2[seg_map == 1].shape[0]
-    segmented_img2[seg_map == 1] = np.random.choice(background_pixels2,
-                                                   n_pix_to_replace2)
+    plot_result(ori_img, segmented_img, seg_map, show=show, save=save)
 
-    downscale_factor = ori_img.shape[0]/segmented_img.shape[0]
-    segmented_img = rescale(segmented_img, downscale_factor)
-    segmented_img2 = rescale(segmented_img2, downscale_factor)
-    seg_cent = rescale(seg_cent, downscale_factor)
+    return segmented_img, seg_cent
 
-    if not (smap is None):
-        segmented_img = segmented_img
-        segmented_img2 = segmented_img2
-        seg_cent = seg_cent
 
-    plot_result(ori_img, segmented_img, segmented_img2, seg_map, show=show, save=save)
+def replace_sources(img, seg_map, median, background_pixels, mode=CONST_CLEAN):
 
-    return segmented_img, segmented_img2, seg_cent
-
+    if(mode == CONST_CLEAN):
+        img[seg_map == 1] = median
+    elif(mode == SAMPLING_CLEAN):    
+        n_pix = img[seg_map == 1].shape[0]
+        img[seg_map == 1] = np.random.choice(background_pixels,
+                                                    n_pix)
+    return img
+    
 
 def galshow(data, ax=None, vmax=99.5, vmin=None):
     '''
@@ -358,7 +370,7 @@ def galshow(data, ax=None, vmax=99.5, vmin=None):
                      origin='lower')
 
 
-def plot_result(ori_img, segmented_img, segmented_img2, seg_map, show=False, save=False):
+def plot_result(ori_img, segmented_img, seg_map, show=False, save=False):
     '''
         Plot the original image, segmented and
         the residual.
@@ -383,9 +395,6 @@ def plot_result(ori_img, segmented_img, segmented_img2, seg_map, show=False, sav
 
         axs[1].set_title('Segmented Image')
         galshow(segmented_img, axs[1])
-
-        axs[1].set_title('Other Segmented Image')
-        galshow(segmented_img2, axs[2])
 
         axs[2].set_title('Original - Segmented')
         galshow(seg_map, axs[3])
