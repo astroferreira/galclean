@@ -21,4 +21,3 @@ This tool was created to remove external bright sources from EFIGI's stamps to a
 after applying artificial redshift to them with FERENGI. An early version [2] of GalClean was used in [1]. 
 
 [1] [de Albernaz Ferreira & Ferrari, 2018](http://adsabs.harvard.edu/abs/2018MNRAS.473.2701D) \
-[2] [First Version](https://github.com/astroferreira/galclean/blob/44ecb2cf4902133c27c4d357b9f72f951b4d5d04/galclean.py)
