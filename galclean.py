@@ -337,7 +337,7 @@ def galshow(data, ax=None, vmax=99.5, vmin=None):
                      origin='lower')
 
 
-def plot_result(ori_img, segmented_img, seg_map, show=False, save=False):
+def plot_result(ori_img, segmented_img, show=False, save=False):
     '''
         Plot the original image, segmented and
         the residual.
@@ -366,7 +366,7 @@ def plot_result(ori_img, segmented_img, seg_map, show=False, save=False):
         galshow(segmented_img, axs[1])
 
         axs[2].set_title('Original - Segmented')
-        galshow(seg_map, axs[2])
+        galshow(residual, axs[2])
 
         plt.subplots_adjust(hspace=0, wspace=0)
         plt.show()
@@ -376,7 +376,7 @@ def plot_result(ori_img, segmented_img, seg_map, show=False, save=False):
             print('Output Inspection PNG {}'.format('segmentation.png'))
             
     if(save):
-        np.save('segmentation_map', seg_map)
+        np.save('segmentation_map', residual)
         print('Output Segmap Mask {}'.format('segmentation_map.npy'))
         
 
