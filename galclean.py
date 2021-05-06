@@ -290,7 +290,7 @@ def galclean(ori_img, std_level=4, min_size=0.01, show=False, save=True):
     downscale_factor = ori_img.shape[0]/segmented_img.shape[0]
     segmented_img = rescale(segmented_img, downscale_factor)
 
-    plot_result(ori_img, segmented_img, seg_map, show=show, save=save)
+    plot_result(ori_img, segmented_img, show=show, save=save)
     
     return segmented_img
 
